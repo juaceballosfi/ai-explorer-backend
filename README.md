@@ -17,7 +17,7 @@ AI Knowledge Explorer es una API robusta construida con **FastAPI** diseñada pa
   - Palabras clave (Keywords).
   - Categorización.
   - Posibles preguntas y respuestas (Q&A).
-- **💬 Interacción Conversacional Contextual:** Permite hacer preguntas sobre el documento subido manteniendo memoria conversacional en cada sesión. El LLM actúa como un experto en el dominio basándose estrictamente en el contenido.
+- **💬 Interacción Conversacional Contextual:** Permite hacer preguntas sobre el documento subido manteniendo memoria conversacional en cada sesión. El historial de chat es persistido automáticamente en la base de datos para retomar la conversación en cualquier momento.
 - **🔒 Seguridad por API Key:** Rutas protegidas mediante un header personalizado (`x-api-key`) para restringir el acceso a operaciones sensibles de la API.
 - **🐳 Infraestructura Preparada:** Orquestación de la base de datos MySQL lista para desarrollo utilizando Docker Compose.
 
@@ -101,10 +101,12 @@ FastAPI genera automáticamente documentación interactiva. Una vez ejecutada la
 | Método | Endpoint | Descripción | Autenticación |
 | :--- | :--- | :--- | :---: |
 | `GET` | `/health` | Verifica si el servicio de la API está en línea. | No |
+| `GET` | `/documents` | Obtiene el listado de todos los documentos ordenados por fecha. | **Sí** |
 | `POST` | `/documents/upload` | Sube un archivo de texto para su almacenamiento y registro en BBDD. (Máximo: 150 KB). | **Sí** |
 | `POST` | `/documents/{doc_id}/analyze` | Desencadena el análisis con LLM (razonamiento) de un documento y guarda resultados. | **Sí** |
 | `GET` | `/documents/{doc_id}/analysis` | Recupera el JSON con el análisis estructurado (Resumen, Keywords, Q&A) almacenado. | **Sí** |
-| `POST` | `/documents/{doc_id}/chat` | Permite enviar preguntas con historial (memoria) sobre el contexto de un documento. | **Sí** |
+| `GET` | `/documents/{doc_id}/chat` | Obtiene el historial completo de la conversación guardada para un documento. | **Sí** |
+| `POST` | `/documents/{doc_id}/chat` | Permite enviar preguntas sobre el documento (el historial se recupera y guarda de la BBDD). | **Sí** |
 
 **Header de Autenticación Requerido:**
 Para consultar los endpoints protegidos (marcados con **Sí**), incluye en las peticiones HTTP la cabecera `x-api-key` con el valor que configuraste en tu `.env` bajo `AI_EXPLORER_API_KEY`.

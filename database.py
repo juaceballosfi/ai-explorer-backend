@@ -28,8 +28,9 @@ def init_db():
     Inicializa la estructura de la base de datos necesaria para la aplicación.
     
     Se ejecuta al iniciar la aplicación para asegurar que las tablas requeridas 
-    existan. Crea la tabla `documents` si no se encuentra en el esquema actual,
-    la cual almacenará los metadatos y análisis de los archivos subidos.
+    existan:
+    - `documents`: Almacena los metadatos y análisis de los archivos subidos.
+    - `chat_messages`: Almacena el historial conversacional asociado a cada documento.
     """
     print("Initializing database...")
     conn = get_connection()
@@ -42,6 +43,16 @@ def init_db():
             local_url     VARCHAR(255),
             upload_date    DATETIME,
             analysis_result JSON
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id          INT AUTO_INCREMENT PRIMARY KEY,
+            document_id INT NOT NULL,
+            role        ENUM('user', 'assistant') NOT NULL,
+            content     TEXT NOT NULL,
+            created_at  DATETIME NOT NULL,
+            FOREIGN KEY (document_id) REFERENCES documents(id)
         )
     ''')
     conn.commit()

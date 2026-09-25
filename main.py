@@ -6,7 +6,7 @@ import os
 import shutil
 
 from database import get_connection, init_db
-from models import ChatRequest, DocumentUploadResponse
+from models import ChatMessage, DocumentUploadResponse
 from llm_service import call_llm
 
 # --- CONFIGURACIÓN DE LA APLICACIÓN ---
@@ -39,16 +39,43 @@ def verificar_api_key(x_api_key: str = Header(...)):
 def health_check():
     """
     Verifica el estado de salud de la API.
-    
-    Este endpoint público no requiere autenticación y se utiliza para 
+
+    Este endpoint público no requiere autenticación y se utiliza para
     comprobar rápidamente si el servidor web está activo y respondiendo
     correctamente a las peticiones HTTP.
-    
+
     Returns:
         dict: Un diccionario con el estado 'ok' y un mensaje de confirmación.
     """
     return {"status": "ok", "message": "API corriendo correctamente"}
 
+
+@app.get(
+    "/documents",
+    dependencies=[Depends(verificar_api_key)],
+)
+def list_documents():
+    """
+    Recupera una lista de todos los documentos almacenados en la base de datos.
+
+    Obtiene los metadatos de los documentos ordenados por fecha de subida de 
+    forma descendente (los más recientes primero). No devuelve el contenido 
+    ni el análisis de los mismos, solo la información general.
+
+    Returns:
+        list: Lista de diccionarios con la información básica de cada documento 
+              (id, nombre, tamaño y fecha de subida).
+    """
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT id, name, size, upload_date FROM documents ORDER BY upload_date DESC"
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return rows
 
 
 @app.post(
@@ -59,18 +86,18 @@ def health_check():
 async def upload_document(file: UploadFile = File(...)):
     """
     Sube un nuevo documento al servidor para su posterior análisis.
-    
+
     Guarda el archivo de texto en el sistema de archivos local de forma segura
-    y registra sus metadatos (nombre, tamaño, ubicación y fecha) en la base 
+    y registra sus metadatos (nombre, tamaño, ubicación y fecha) en la base
     de datos. Cuenta con validación de tamaño para prevenir archivos muy pesados.
-    
+
     Args:
         file (UploadFile): El archivo a subir enviado a través de form-data.
-        
+
     Returns:
         dict: Diccionario que contiene el ID asignado, nombre del archivo,
               tamaño y un mensaje de éxito.
-              
+
     Raises:
         HTTPException: Si el archivo supera el límite de tamaño permitido.
     """
@@ -118,18 +145,18 @@ async def upload_document(file: UploadFile = File(...)):
 async def analyze_document(doc_id: int):
     """
     Procesa y analiza el contenido de un documento previamente subido.
-    
+
     Lee el archivo desde el almacenamiento local y utiliza un modelo de lenguaje
-    (LLM Reasoning) avanzado para extraer información clave estructurada: un resumen, 
-    palabras clave, categoría y un listado de preguntas y respuestas relevantes. 
+    (LLM Reasoning) avanzado para extraer información clave estructurada: un resumen,
+    palabras clave, categoría y un listado de preguntas y respuestas relevantes.
     El resultado en formato JSON se almacena en la base de datos para consultas futuras.
-    
+
     Args:
         doc_id (int): El identificador único del documento a analizar.
-        
+
     Returns:
         dict: Objeto indicando éxito junto con el análisis estructurado.
-              
+
     Raises:
         HTTPException: (404) Si el documento no se encuentra, o (500) si falla la lectura.
     """
@@ -200,18 +227,18 @@ async def analyze_document(doc_id: int):
 def get_analysis(doc_id: int):
     """
     Recupera el análisis de un documento almacenado en la base de datos.
-    
-    Consulta y devuelve la estructura JSON con el análisis detallado (resumen, 
+
+    Consulta y devuelve la estructura JSON con el análisis detallado (resumen,
     keywords, categoría, etc.) generado previamente por el endpoint de análisis.
-    
+
     Args:
         doc_id (int): El identificador único del documento.
-        
+
     Returns:
         dict: El análisis estructurado del documento en formato JSON.
-        
+
     Raises:
-        HTTPException: (404) Si el documento no existe o si todavía 
+        HTTPException: (404) Si el documento no existe o si todavía
                        no ha sido analizado.
     """
     conn = get_connection()
@@ -229,28 +256,58 @@ def get_analysis(doc_id: int):
     return json.loads(row[0])
 
 
+@app.get(
+    "/documents/{doc_id}/chat",
+    dependencies=[Depends(verificar_api_key)],
+)
+def get_chat_history(doc_id: int):
+    """
+    Recupera el historial de chat persistido para un documento específico.
+
+    Consulta la base de datos para obtener todos los mensajes (preguntas del usuario 
+    y respuestas del asistente) asociados a un documento, ordenados cronológicamente.
+    
+    Args:
+        doc_id (int): El identificador único del documento.
+
+    Returns:
+        list: Lista de mensajes en formato de diccionario conteniendo el rol,
+              el contenido del mensaje y la fecha de creación.
+    """
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT role, content, created_at FROM chat_messages WHERE document_id = %s ORDER BY created_at ASC",
+        (doc_id,),
+    )
+    rows = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
+    return rows
+
+
 @app.post(
     "/documents/{doc_id}/chat",
     dependencies=[Depends(verificar_api_key)],
 )
-async def chat_with_document(doc_id: int, request: ChatRequest):
+async def chat_with_document(doc_id: int, request: ChatMessage):
     """
-    Permite interactuar conversacionalmente con un documento específico.
-    
-    Implementa un chat contextual donde el documento sirve como base de 
-    conocimiento. El LLM recibe el contenido del documento, el historial de la 
-    conversación previa (memoria) y la nueva pregunta del usuario, para generar
-    respuestas coherentes y fundamentadas estrictamente en el texto proporcionado.
-    
+    Permite interactuar conversacionalmente con un documento específico persistiendo memoria.
+
+    Implementa un chat contextual donde el documento sirve como base de
+    conocimiento. El LLM recibe el contenido del documento, recupera el historial de la
+    conversación previa directamente de la base de datos y la nueva pregunta del usuario, 
+    para generar respuestas coherentes. Finalmente, guarda la interacción en la base de datos.
+
     Args:
         doc_id (int): El ID del documento sobre el cual se va a consultar.
-        request (ChatRequest): Objeto que contiene la nueva pregunta del usuario
-                               y opcionalmente el historial de mensajes anteriores.
-        
+        request (ChatMessage): Objeto que contiene la nueva pregunta del usuario.
+
     Returns:
         dict: Un diccionario con la pregunta formulada y la respuesta generada
               por el asistente virtual.
-              
+
     Raises:
         HTTPException: (404) Si el documento no existe, o (500) por errores de lectura.
     """
@@ -283,12 +340,23 @@ async def chat_with_document(doc_id: int, request: ChatRequest):
     {content}
     """
 
+    # Recuperar el historial de chat de la base de datos
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute(
+        "SELECT role, content FROM chat_messages WHERE document_id = %s ORDER BY created_at ASC",
+        (doc_id,),
+    )
+    historial = cursor.fetchall()
+    cursor.close()
+    conn.close()
+
     messages = [{"role": "system", "content": prompt_sistema}]
 
-    for msg in request.history:
-        messages.append({"role": msg.role, "content": msg.content})
+    for msg in historial:
+        messages.append({"role": msg["role"], "content": msg["content"]})
 
-    messages.append({"role": "user", "content": request.nueva_pregunta})
+    messages.append({"role": "user", "content": request.content})
 
     # 4. Ejecutar la llamada asíncrona al LLM
     # Se usa el modelo 'Performance' (más rápido para chat) y una temperatura moderada (0.3)
@@ -297,7 +365,23 @@ async def chat_with_document(doc_id: int, request: ChatRequest):
         model="Performance",
         messages=messages,
         temperature=0.3,
-        timeout=30.0, # Timeout superior por si el contexto procesado es muy amplio
+        timeout=30.0,  # Timeout superior por si el contexto procesado es muy amplio
     )
 
-    return {"pregunta": request.nueva_pregunta, "respuesta": respuesta_texto}
+    # 5. Persistir la interacción actual en la base de datos
+    ahora = datetime.now().isoformat()
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO chat_messages (document_id, role, content, created_at) VALUES (%s, %s, %s, %s)",
+        (doc_id, "user", request.content, ahora),
+    )
+    cursor.execute(
+        "INSERT INTO chat_messages (document_id, role, content, created_at) VALUES (%s, %s, %s, %s)",
+        (doc_id, "assistant", respuesta_texto, ahora),
+    )
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return {"pregunta": request.content, "respuesta": respuesta_texto}
