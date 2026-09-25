@@ -13,8 +13,25 @@ async def call_llm(
     model: str, messages: list, temperature: float = 0.3, timeout: float = 30.0
 ) -> str:
     """
-    Envía una conversación a un modelo de Fi Apps y devuelve el texto de la respuesta.
-    Lanza HTTPException si Fi Apps responde con error o si no se puede alcanzar la API.
+    Interactúa con la API externa para generar respuestas usando Modelos de Lenguaje (LLMs).
+    
+    Toma un historial de mensajes y una configuración específica (modelo, temperatura) y realiza
+    una petición HTTP asíncrona al servicio de IA. Maneja los errores de red y de API 
+    convirtiéndolos en excepciones HTTP estándar.
+    
+    Args:
+        model (str): El nombre del modelo a utilizar (ej. "Reasoning", "Performance").
+        messages (list): Lista de diccionarios representando el historial conversacional.
+                         Formato esperado: [{"role": "system|user|assistant", "content": "..."}]
+        temperature (float, optional): Grado de creatividad de la respuesta (0.0 a 1.0). Por defecto 0.3.
+        timeout (float, optional): Tiempo de espera máximo en segundos. Por defecto 30.0.
+        
+    Returns:
+        str: El texto de la respuesta generada por el modelo.
+        
+    Raises:
+        HTTPException: (503) Si hay problemas de conexión, o el código de error correspondiente 
+                       si la API remota rechaza la petición.
     """
     payload = {"model": model, "messages": messages, "temperature": temperature}
 

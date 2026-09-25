@@ -5,6 +5,16 @@ import os
 load_dotenv()
 
 def get_connection():
+    """
+    Crea y devuelve una nueva conexión a la base de datos MySQL.
+    
+    Utiliza las credenciales y configuración proporcionadas a través de 
+    variables de entorno. Es responsabilidad del llamador cerrar la conexión 
+    una vez finalizadas las operaciones.
+    
+    Returns:
+        mysql.connector.connection.MySQLConnection: Objeto de conexión activa a la BD.
+    """
     return mysql.connector.connect(
         host=os.getenv("MYSQL_HOST"),
         port=int(os.getenv("MYSQL_PORT")),
@@ -14,6 +24,13 @@ def get_connection():
     )
 
 def init_db():
+    """
+    Inicializa la estructura de la base de datos necesaria para la aplicación.
+    
+    Se ejecuta al iniciar la aplicación para asegurar que las tablas requeridas 
+    existan. Crea la tabla `documents` si no se encuentra en el esquema actual,
+    la cual almacenará los metadatos y análisis de los archivos subidos.
+    """
     print("Initializing database...")
     conn = get_connection()
     cursor = conn.cursor()
