@@ -10,7 +10,9 @@ from models import ChatRequest, DocumentUploadResponse
 from llm_service import call_llm
 
 # --- CONFIGURACIÓN DE LA APLICACIÓN ---
-app = FastAPI(title="AI Knowledge Explorer API")
+import os
+
+app = FastAPI(title="AI Knowledge Explorer API", root_path=os.getenv("ROOT_PATH", ""))
 
 app.add_middleware(
     CORSMiddleware,
